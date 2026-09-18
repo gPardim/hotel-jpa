@@ -42,14 +42,18 @@ public class ReservaService {
         Quarto quarto = quartoRepository.findById(quartoId)
                 .orElseThrow(() -> new RecursoNaoEncontradoException("Quarto", quartoId));
 
-        boolean conflito = reservaRepository.existeConflito(
-                quartoId, StatusReserva.ATIVA, periodo.getCheckIn(), periodo.getCheckOut());
-        if (conflito) {
-            throw new QuartoIndisponivelException(quarto.getNumero());
-        }
+        garantirQuartoDisponivel(quarto, periodo);
 
         Reserva reserva = new Reserva(hospede, quarto, periodo, quarto.calcularValor(periodo));
         return reservaRepository.save(reserva);
+    }
+
+    private void garantirQuartoDisponivel(Quarto quarto, Periodo periodo) {
+        boolean conflito = reservaRepository.existeConflito(
+                quarto.getId(), StatusReserva.ATIVA, periodo.getCheckIn(), periodo.getCheckOut());
+        if (conflito) {
+            throw new QuartoIndisponivelException(quarto.getNumero());
+        }
     }
 
     @Transactional
