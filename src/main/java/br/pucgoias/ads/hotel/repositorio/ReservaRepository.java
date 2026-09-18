@@ -7,6 +7,7 @@ import java.time.LocalDate;
 import java.util.List;
 import org.springframework.data.domain.Page;
 import org.springframework.data.domain.Pageable;
+import org.springframework.data.jpa.repository.EntityGraph;
 import org.springframework.data.jpa.repository.JpaRepository;
 import org.springframework.data.jpa.repository.Query;
 import org.springframework.data.repository.query.Param;
@@ -29,13 +30,14 @@ public interface ReservaRepository extends JpaRepository<Reserva, Long> {
     Page<Reserva> findByHospedeId(Long hospedeId, Pageable pageable);
 
     @Query("""
-            select new br.pucgoias.ads.hotel.dto.OcupacaoQuarto(r.quarto.numero, count(r), sum(r.valorTotal))
-            from Reserva r
+            select new br.pucgoias.ads.hotel.dto.OcupacaoQuarto(q.numero, count(r), sum(r.valorTotal))
+            from Reserva r join r.quarto q
             where r.status = :status
-            group by r.quarto.numero
-            order by count(r) desc
+            group by q.numero
+            order by q.numero
             """)
     List<OcupacaoQuarto> relatorioOcupacao(@Param("status") StatusReserva status);
 
+    @EntityGraph(attributePaths = {"hospede", "quarto"})
     List<Reserva> findByStatusOrderById(StatusReserva status);
 }

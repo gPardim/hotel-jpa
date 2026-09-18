@@ -15,9 +15,13 @@ import br.pucgoias.ads.hotel.excecao.PeriodoInvalidoException;
 import br.pucgoias.ads.hotel.excecao.QuartoIndisponivelException;
 import br.pucgoias.ads.hotel.repositorio.HospedeRepository;
 import br.pucgoias.ads.hotel.repositorio.QuartoRepository;
+import jakarta.persistence.EntityManager;
 import java.math.BigDecimal;
 import java.time.LocalDate;
+import java.util.Comparator;
 import java.util.List;
+import org.hibernate.SessionFactory;
+import org.hibernate.stat.Statistics;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -39,6 +43,9 @@ class ReservaServiceTest {
 
     @Autowired
     private QuartoRepository quartoRepository;
+
+    @Autowired
+    private EntityManager entityManager;
 
     private Hospede novoHospede(String nome, String documento) {
         return hospedeRepository.save(new Hospede(nome, documento));
@@ -120,36 +127,54 @@ class ReservaServiceTest {
         Quarto quarto = novoStandard("104");
         Reserva reserva = servico.reservar(hospede.getId(), quarto.getId(),
                 new Periodo(LocalDate.of(2026, 6, 1), LocalDate.of(2026, 6, 5)));
+        Long reservaId = reserva.getId();
 
-        servico.cancelar(reserva.getId());
+        entityManager.flush();
+        entityManager.clear();
 
-        assertThat(reserva.getStatus()).isEqualTo(StatusReserva.CANCELADA);
+        servico.cancelar(reservaId);
+
+        entityManager.flush();
+        entityManager.clear();
+
+        Reserva recarregada = entityManager.find(Reserva.class, reservaId);
+
+        assertThat(recarregada.getStatus()).isEqualTo(StatusReserva.CANCELADA);
     }
 
     @Test
     @DisplayName("7. Listagem de reservas do hospede e paginada e ordenada por check-in decrescente")
     void listagemPorHospedeEPaginadaEOrdenada() {
         Hospede hospede = novoHospede("Fabio Nunes", "66666666666");
+        Hospede outroHospede = novoHospede("Gabriela Reis", "77777777777");
         Quarto quartoA = novoStandard("105");
         Quarto quartoB = novoStandard("106");
+        Quarto quartoC = novoStandard("107");
+        Quarto quartoD = novoStandard("108");
 
         servico.reservar(hospede.getId(), quartoA.getId(),
                 new Periodo(LocalDate.of(2026, 7, 1), LocalDate.of(2026, 7, 5)));
         servico.reservar(hospede.getId(), quartoB.getId(),
                 new Periodo(LocalDate.of(2026, 8, 1), LocalDate.of(2026, 8, 5)));
+        servico.reservar(hospede.getId(), quartoC.getId(),
+                new Periodo(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 5)));
+        servico.reservar(outroHospede.getId(), quartoD.getId(),
+                new Periodo(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 5)));
 
-        Page<Reserva> pagina = servico.listarPorHospede(hospede.getId(), 0, 10);
+        Page<Reserva> pagina = servico.listarPorHospede(hospede.getId(), 0, 2);
 
-        assertThat(pagina.getTotalElements()).isEqualTo(2);
-        assertThat(pagina.getContent().get(0).getPeriodo().getCheckIn())
-                .isAfter(pagina.getContent().get(1).getPeriodo().getCheckIn());
+        assertThat(pagina.getTotalElements()).isEqualTo(3);
+        assertThat(pagina.getTotalPages()).isEqualTo(2);
+        assertThat(pagina.getContent())
+                .extracting(r -> r.getPeriodo().getCheckIn())
+                .isSortedAccordingTo(Comparator.reverseOrder());
     }
 
     @Test
     @DisplayName("8. Relatorio de ocupacao retorna quantidade e receita por quarto")
     void relatorioDeOcupacaoRetornaQuantidadeEReceita() {
-        Hospede hospede = novoHospede("Gabriela Reis", "77777777777");
-        Quarto quarto = novoStandard("107");
+        Hospede hospede = novoHospede("Heitor Ramos", "88888888888");
+        Quarto quarto = novoStandard("109");
 
         servico.reservar(hospede.getId(), quarto.getId(),
                 new Periodo(LocalDate.of(2026, 9, 1), LocalDate.of(2026, 9, 5)));
@@ -157,7 +182,7 @@ class ReservaServiceTest {
         List<OcupacaoQuarto> relatorio = servico.relatorioOcupacao();
 
         assertThat(relatorio).anySatisfy(item -> {
-            assertThat(item.numeroQuarto()).isEqualTo("107");
+            assertThat(item.numeroQuarto()).isEqualTo("109");
             assertThat(item.quantidadeReservas()).isEqualTo(1L);
         });
     }
@@ -165,16 +190,26 @@ class ReservaServiceTest {
     @Test
     @DisplayName("9. Listagem de reservas ativas carrega hospede e quarto em uma unica instrucao SQL")
     void listagemAtivasCarregaDetalhesEmUmaConsulta() {
-        Hospede hospede = novoHospede("Heitor Ramos", "88888888888");
-        Quarto quarto = novoStandard("108");
+        Hospede hospede = novoHospede("Igor Castro", "99999999999");
+        Quarto quarto = novoStandard("110");
         servico.reservar(hospede.getId(), quarto.getId(),
                 new Periodo(LocalDate.of(2026, 10, 1), LocalDate.of(2026, 10, 5)));
 
+        entityManager.flush();
+        entityManager.clear();
+
+        Statistics estatisticas = entityManager.getEntityManagerFactory()
+                .unwrap(SessionFactory.class).getStatistics();
+        estatisticas.clear();
+
         List<Reserva> ativas = servico.listarAtivasComDetalhes();
+        ativas.forEach(r -> {
+            r.getHospede().getNome();
+            r.getQuarto().getNumero();
+        });
 
         assertThat(ativas).isNotEmpty();
-        assertThat(ativas.get(0).getHospede().getNome()).isNotNull();
-        assertThat(ativas.get(0).getQuarto().getNumero()).isNotNull();
+        assertThat(estatisticas.getPrepareStatementCount()).isEqualTo(1);
     }
 
     @Test
