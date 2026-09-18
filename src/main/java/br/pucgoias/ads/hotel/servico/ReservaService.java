@@ -13,6 +13,9 @@ import br.pucgoias.ads.hotel.repositorio.QuartoRepository;
 import br.pucgoias.ads.hotel.repositorio.ReservaRepository;
 import java.util.List;
 import org.springframework.data.domain.Page;
+import org.springframework.data.domain.Pageable;
+import org.springframework.data.domain.PageRequest;
+import org.springframework.data.domain.Sort;
 import org.springframework.stereotype.Service;
 import org.springframework.transaction.annotation.Transactional;
 
@@ -51,18 +54,21 @@ public class ReservaService {
 
     @Transactional
     public void cancelar(Long reservaId) {
-        throw new UnsupportedOperationException();
+        Reserva reserva = reservaRepository.findById(reservaId)
+                .orElseThrow(() -> new RecursoNaoEncontradoException("Reserva", reservaId));
+        reserva.cancelar();
     }
 
     public Page<Reserva> listarPorHospede(Long hospedeId, int pagina, int tamanho) {
-        throw new UnsupportedOperationException();
+        Pageable paginacao = PageRequest.of(pagina, tamanho, Sort.by("periodo.checkIn").descending());
+        return reservaRepository.findByHospedeId(hospedeId, paginacao);
     }
 
     public List<OcupacaoQuarto> relatorioOcupacao() {
-        throw new UnsupportedOperationException();
+        return reservaRepository.relatorioOcupacao(StatusReserva.ATIVA);
     }
 
     public List<Reserva> listarAtivasComDetalhes() {
-        throw new UnsupportedOperationException();
+        return reservaRepository.findByStatusOrderById(StatusReserva.ATIVA);
     }
 }
